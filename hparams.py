@@ -84,10 +84,12 @@ hparams = tf.contrib.training.HParams(
     pin_memory=True,
     num_workers=2,
 
-    # train/test
+    # train/valid/test
     # test size can be specified as portion or num samples
-    test_size=0.0441,  # 50 for CMU ARCTIC single speaker
-    test_num_samples=None,
+    valid_size=None,  # 0.0441 for CMU ARCTIC single speaker
+    valid_num_samples=50,  # 50 for CMU ARCTIC single speaker
+    test_size=None,
+    test_num_samples=10,
     random_state=1234,
 
     # Loss

@@ -48,7 +48,6 @@ from nnmnkwii.datasets import FileSourceDataset, FileDataSource
 
 import librosa.display
 
-from sklearn.model_selection import train_test_split
 from keras.utils import np_utils
 from tensorboardX import SummaryWriter
 from matplotlib import cm
@@ -102,30 +101,20 @@ def _pad_2d(x, max_len, b_pad=0):
 
 class _NPYDataSource(FileDataSource):
     def __init__(self, data_root, col, speaker_id=None,
-                 train=True, test_size=0.05, test_num_samples=None, random_state=1234):
+                 phase="train", test_size=0.05, test_num_samples=None, random_state=1234):
         self.data_root = data_root
         self.col = col
         self.lengths = []
         self.speaker_id = speaker_id
         self.multi_speaker = False
         self.speaker_ids = None
-        self.train = train
+        self.phase = phase
         self.test_size = test_size
         self.test_num_samples = test_num_samples
         self.random_state = random_state
 
-    def interest_indices(self, paths):
-        indices = np.arange(len(paths))
-        if self.test_size is None:
-            test_size = self.test_num_samples / len(paths)
-        else:
-            test_size = self.test_size
-        train_indices, test_indices = train_test_split(
-            indices, test_size=test_size, random_state=self.random_state)
-        return train_indices if self.train else test_indices
-
     def collect_files(self):
-        meta = join(self.data_root, "train.txt")
+        meta = join(self.data_root, "{}.txt".format(self.phase))
         with open(meta, "rb") as f:
             lines = f.readlines()
         l = lines[0].decode("utf-8").split("|")
@@ -147,27 +136,9 @@ class _NPYDataSource(FileDataSource):
                 paths = list(np.array(paths)[indices])
                 self.lengths = list(np.array(self.lengths)[indices])
 
-                # Filter by train/tset
-                indices = self.interest_indices(paths)
-                paths = list(np.array(paths)[indices])
-                self.lengths = list(np.array(self.lengths)[indices])
-
                 # aha, need to cast numpy.int64 to int
                 self.lengths = list(map(int, self.lengths))
                 self.multi_speaker = False
-
-                return paths
-
-        # Filter by train/test
-        indices = self.interest_indices(paths)
-        paths = list(np.array(paths)[indices])
-        lengths_np = list(np.array(self.lengths)[indices])
-        self.lengths = list(map(int, lengths_np))
-
-        if self.multi_speaker:
-            speaker_ids_np = list(np.array(self.speaker_ids)[indices])
-            self.speaker_ids = list(map(int, speaker_ids_np))
-            assert len(paths) == len(self.speaker_ids)
 
         return paths
 
@@ -858,19 +829,18 @@ def restore_parts(path, model):
                 warn("{}: may contain invalid size of weight. skipping...".format(k))
 
 
-def get_data_loaders(data_root, speaker_id, test_shuffle=True):
+def get_data_loaders(data_root, speaker_id, test_shuffle=True, phases=("train", "valid")):
     data_loaders = {}
     local_conditioning = hparams.cin_channels > 0
-    for phase in ["train", "test"]:
-        train = phase == "train"
+    for phase in phases:
         X = FileSourceDataset(RawAudioDataSource(data_root, speaker_id=speaker_id,
-                                                 train=train,
+                                                 phase=phase,
                                                  test_size=hparams.test_size,
                                                  test_num_samples=hparams.test_num_samples,
                                                  random_state=hparams.random_state))
         if local_conditioning:
             Mel = FileSourceDataset(MelSpecDataSource(data_root, speaker_id=speaker_id,
-                                                      train=train,
+                                                      phase=phase,
                                                       test_size=hparams.test_size,
                                                       test_num_samples=hparams.test_num_samples,
                                                       random_state=hparams.random_state))
@@ -881,7 +851,7 @@ def get_data_loaders(data_root, speaker_id, test_shuffle=True):
             Mel = None
         print("[{}]: length of the dataset is {}".format(phase, len(X)))
 
-        if train:
+        if phase == "train":
             lengths = np.array(X.file_data_source.lengths)
             # Prepare sampler
             sampler = PartialyRandomizedSimilarTimeLengthSampler(
