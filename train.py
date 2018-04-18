@@ -54,7 +54,7 @@ from tensorboardX import SummaryWriter
 from matplotlib import cm
 from warnings import warn
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input, Tee
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input, Tee, print_gpu_memory
 from wavenet_vocoder.mixture import discretized_mix_logistic_loss
 from wavenet_vocoder.mixture import sample_from_discretized_mix_logistic
 
@@ -617,7 +617,9 @@ def __train_step(phase, epoch, global_step, global_test_step,
     # NOTE: softmax is handled in F.cross_entrypy_loss
     # y_hat: (B x C x T)
 
+    print_gpu_memory()
     y_hat = model(x, c=c, g=g, softmax=False)
+    print_gpu_memory()
 
     if is_mulaw_quantize(hparams.input_type):
         # wee need 4d inputs for spatial cross entropy loss

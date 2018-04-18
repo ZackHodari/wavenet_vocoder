@@ -28,7 +28,7 @@ from keras.utils import np_utils
 from tqdm import tqdm
 import librosa
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, Tee
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, Tee, print_gpu_memory
 
 import audio
 from hparams import hparams
@@ -119,9 +119,11 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
         g = None if g is None else g.cuda()
         c = None if c is None else c.cuda()
 
+    print_gpu_memory()
     y_hat = model.incremental_forward(
         initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
         log_scale_min=hparams.log_scale_min)
+    print_gpu_memory()
 
     if is_mulaw_quantize(hparams.input_type):
         y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
