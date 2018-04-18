@@ -28,7 +28,7 @@ from keras.utils import np_utils
 from tqdm import tqdm
 import librosa
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, Tee
 
 import audio
 from hparams import hparams
@@ -158,6 +158,9 @@ if __name__ == "__main__":
     hparams.parse(args["--hparams"])
     assert hparams.name == "wavenet_vocoder"
 
+    # tee sys.stdout to an additional log file in checkpoint_dir
+    tee = Tee(join(checkpoint_dir, 'synthesis.stdout'))
+
     # Load conditional features
     if conditional_path is not None:
         c = np.load(conditional_path)
@@ -188,4 +191,5 @@ if __name__ == "__main__":
     librosa.output.write_wav(dst_wav_path, waveform, sr=hparams.sample_rate)
 
     print("Finished! Check out {} for generated audio samples.".format(dst_dir))
+    del tee
     sys.exit(0)

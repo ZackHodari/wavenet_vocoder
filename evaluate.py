@@ -29,7 +29,7 @@ from tqdm import tqdm
 import librosa
 
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, Tee
 
 import audio
 from hparams import hparams
@@ -61,6 +61,9 @@ if __name__ == "__main__":
     # Override hyper parameters
     hparams.parse(args["--hparams"])
     assert hparams.name == "wavenet_vocoder"
+
+    # tee sys.stdout to an additional log file in checkpoint_dir
+    tee = Tee(join(checkpoint_dir, 'evaluate.stdout'))
 
     from train import build_model, get_data_loaders
     from synthesis import wavegen
@@ -138,4 +141,5 @@ Your browser does not support the audio element.
 """.format(hparams.name, dst_dir_name, basename(dst_wav_path)))
 
     print("Finished! Check out {} for generated audio samples.".format(dst_dir))
+    del tee
     sys.exit(0)

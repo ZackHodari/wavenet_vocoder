@@ -54,7 +54,7 @@ from tensorboardX import SummaryWriter
 from matplotlib import cm
 from warnings import warn
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input, Tee
 from wavenet_vocoder.mixture import discretized_mix_logistic_loss
 from wavenet_vocoder.mixture import sample_from_discretized_mix_logistic
 
@@ -922,6 +922,9 @@ if __name__ == "__main__":
     speaker_id = int(speaker_id) if speaker_id is not None else None
     preset = args["--preset"]
 
+    # tee sys.stdout to an additional log file in checkpoint_dir
+    tee = Tee(join(checkpoint_dir, 'train.stdout'))
+
     data_root = args["--data-root"]
     if data_root is None:
         data_root = join(dirname(__file__), "data", "ljspeech")
@@ -983,4 +986,5 @@ if __name__ == "__main__":
 
     print("Finished")
 
+    del tee
     sys.exit(0)
