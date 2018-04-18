@@ -30,12 +30,12 @@ def write_metadata(metadata, out_dir):
     test_metadata = []
 
     if hparams.valid_num_samples is None:
-        valid_num_samples = hparams.valid_size * len(metadata)
+        valid_num_samples = int(hparams.valid_size * len(metadata))
     else:
         valid_num_samples = hparams.valid_num_samples
 
     if hparams.test_num_samples is None:
-        test_num_samples = hparams.test_size * len(metadata)
+        test_num_samples = int(hparams.test_size * len(metadata))
     else:
         test_num_samples = hparams.test_num_samples
 

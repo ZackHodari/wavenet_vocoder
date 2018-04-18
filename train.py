@@ -101,8 +101,7 @@ def _pad_2d(x, max_len, b_pad=0):
 
 
 class _NPYDataSource(FileDataSource):
-    def __init__(self, data_root, col, speaker_id=None,
-                 phase="train", test_size=0.05, test_num_samples=None, random_state=1234):
+    def __init__(self, data_root, col, speaker_id=None, phase="train"):
         self.data_root = data_root
         self.col = col
         self.lengths = []
@@ -110,9 +109,6 @@ class _NPYDataSource(FileDataSource):
         self.multi_speaker = False
         self.speaker_ids = None
         self.phase = phase
-        self.test_size = test_size
-        self.test_num_samples = test_num_samples
-        self.random_state = random_state
 
     def collect_files(self):
         meta = join(self.data_root, "{}.txt".format(self.phase))
@@ -836,17 +832,11 @@ def get_data_loaders(data_root, speaker_id, test_shuffle=True, phases=("train", 
     data_loaders = {}
     local_conditioning = hparams.cin_channels > 0
     for phase in phases:
-        X = FileSourceDataset(RawAudioDataSource(data_root, speaker_id=speaker_id,
-                                                 phase=phase,
-                                                 test_size=hparams.test_size,
-                                                 test_num_samples=hparams.test_num_samples,
-                                                 random_state=hparams.random_state))
+        X = FileSourceDataset(RawAudioDataSource(data_root, speaker_id=speaker_id, phase=phase))
+
         if local_conditioning:
-            Mel = FileSourceDataset(MelSpecDataSource(data_root, speaker_id=speaker_id,
-                                                      phase=phase,
-                                                      test_size=hparams.test_size,
-                                                      test_num_samples=hparams.test_num_samples,
-                                                      random_state=hparams.random_state))
+            Mel = FileSourceDataset(MelSpecDataSource(data_root, speaker_id=speaker_id, phase=phase))
+
             assert len(X) == len(Mel)
             print("Local conditioning enabled. Shape of a sample: {}.".format(
                 Mel[0].shape))
