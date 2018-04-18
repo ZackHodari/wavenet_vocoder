@@ -17,6 +17,7 @@ options:
 from docopt import docopt
 
 import sys
+import signal
 
 import os
 from os.path import dirname, join, expanduser
@@ -943,6 +944,9 @@ if __name__ == "__main__":
         log_event_path = "log/run-test" + str(datetime.now()).replace(" ", "_")
     print("TensorBoard event log path: {}".format(log_event_path))
     writer = SummaryWriter(log_dir=log_event_path)
+
+    # if Slurm sends the terminate signal then save a final checkpoint
+    signal.signal(signal.SIGTERM, lambda: save_checkpoint(model, optimizer, global_step, checkpoint_dir, global_epoch))
 
     # Train!
     try:
