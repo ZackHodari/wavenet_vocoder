@@ -63,7 +63,7 @@ if __name__ == "__main__":
     assert hparams.name == "wavenet_vocoder"
 
     # tee sys.stdout to an additional log file in checkpoint_dir
-    tee = Tee(join(checkpoint_dir, 'evaluate.stdout'))
+    tee = Tee(join(os.path.dirname(checkpoint_path), 'evaluate.stdout'))
 
     from train import build_model, get_data_loaders
     from synthesis import wavegen

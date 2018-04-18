@@ -613,9 +613,9 @@ def __train_step(phase, epoch, global_step, global_test_step,
     # NOTE: softmax is handled in F.cross_entrypy_loss
     # y_hat: (B x C x T)
 
-    print_gpu_memory()
     y_hat = model(x, c=c, g=g, softmax=False)
-    print_gpu_memory()
+    if do_eval:
+        print_gpu_memory()
 
     if is_mulaw_quantize(hparams.input_type):
         # wee need 4d inputs for spatial cross entropy loss
@@ -885,9 +885,6 @@ if __name__ == "__main__":
     speaker_id = int(speaker_id) if speaker_id is not None else None
     preset = args["--preset"]
 
-    # tee sys.stdout to an additional log file in checkpoint_dir
-    tee = Tee(join(checkpoint_dir, 'train.stdout'))
-
     data_root = args["--data-root"]
     if data_root is None:
         data_root = join(dirname(__file__), "data", "ljspeech")
@@ -905,6 +902,9 @@ if __name__ == "__main__":
     print(hparams_debug_string())
 
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # tee sys.stdout to an additional log file in checkpoint_dir
+    tee = Tee(join(checkpoint_dir, 'train.stdout'))
 
     # Dataloader setup
     data_loaders = get_data_loaders(data_root, speaker_id, test_shuffle=True)

@@ -161,7 +161,7 @@ if __name__ == "__main__":
     assert hparams.name == "wavenet_vocoder"
 
     # tee sys.stdout to an additional log file in checkpoint_dir
-    tee = Tee(join(checkpoint_dir, 'synthesis.stdout'))
+    tee = Tee(join(os.path.dirname(checkpoint_path), 'synthesis.stdout'))
 
     # Load conditional features
     if conditional_path is not None:
