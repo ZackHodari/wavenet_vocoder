@@ -438,7 +438,11 @@ def collate_fn(batch):
 
 
 def time_string():
-    return datetime.now().strftime('%Y-%m-%d %H:%M')
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+def elapsed_time(start_time):
+    return str(datetime.now() - start_time).split('.')[0]
 
 
 def save_waveplot(path, y_hat, y_target):
@@ -672,6 +676,8 @@ def train_loop(model, data_loaders, optimizer, writer, checkpoint_dir=None):
     else:
         ema = None
 
+    start_time = datetime.now()
+
     global global_step, global_epoch, global_test_step
     while global_epoch < hparams.nepochs:
         for phase, data_loader in data_loaders.items():
@@ -695,6 +701,8 @@ def train_loop(model, data_loaders, optimizer, writer, checkpoint_dir=None):
                     test_evaluated = True
                 if do_eval:
                     print("[{}] Eval at train step {}".format(phase, global_step))
+                    print("[{}] Current time {}".format(phase, time_string()))
+                    print("[{}] Elapsed time {}".format(phase, elapsed_time()))
 
                 # Do step
                 running_loss += __train_step(
