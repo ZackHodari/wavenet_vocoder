@@ -23,6 +23,8 @@ if __name__ == "__main__":
     preset = args["--preset"]
     output_json_path = args["<output_json_path>"]
 
+    os.makedirs(dirname(output_json_path), exist_ok=True)
+
     # Load preset if specified
     if preset is not None:
         with open(preset) as f:
