@@ -3,8 +3,8 @@ from functools import partial
 import numpy as np
 import os
 import audio
-
-from nnmnkwii import preprocessing as P
+from nnmnkwii.datasets import jsut
+from nnmnkwii.io import hts
 from hparams import hparams
 from os.path import exists
 import librosa
@@ -15,24 +15,37 @@ from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw
 def build_from_path(in_dir, out_dir, num_workers=1, tqdm=lambda x: x):
     executor = ProcessPoolExecutor(max_workers=num_workers)
     futures = []
-    index = 1
-    with open(os.path.join(in_dir, 'metadata.csv'), encoding='utf-8') as f:
-        for line in f:
-            parts = line.strip().split('|')
-            wav_path = os.path.join(in_dir, 'wavs', '%s.wav' % parts[0])
-            text = parts[2]
-            futures.append(executor.submit(
-                partial(_process_utterance, out_dir, index, wav_path, text)))
-            index += 1
+
+    transcriptions = jsut.TranscriptionDataSource(
+        in_dir, subsets=jsut.available_subsets).collect_files()
+    wav_paths = jsut.WavFileDataSource(
+        in_dir, subsets=jsut.available_subsets).collect_files()
+
+    for index, (text, wav_path) in enumerate(zip(transcriptions, wav_paths)):
+        futures.append(executor.submit(
+            partial(_process_utterance, out_dir, index + 1, wav_path, text)))
     return [future.result() for future in tqdm(futures)]
 
 
 def _process_utterance(out_dir, index, wav_path, text):
     # Load the audio to a numpy array:
     wav = audio.load_wav(wav_path)
+    sr = hparams.sample_rate
 
     if hparams.rescaling:
         wav = wav / np.abs(wav).max() * hparams.rescaling_max
+
+    # Trim silence from hts labels if available
+    lab_path = wav_path.replace("wav/", "lab/").replace(".wav", ".lab")
+    if exists(lab_path):
+        labels = hts.load(lab_path)
+        assert "sil" in labels[0][-1]
+        assert "sil" in labels[-1][-1]
+        b = int(labels[0][1] * 1e-7 * sr)
+        e = int(labels[-1][0] * 1e-7 * sr)
+        wav = wav[b:e]
+    else:
+        wav, _ = librosa.effects.trim(wav, top_db=30)
 
     # Mu-law quantize
     if is_mulaw_quantize(hparams.input_type):
@@ -77,8 +90,8 @@ def _process_utterance(out_dir, index, wav_path, text):
     timesteps = len(out)
 
     # Write the spectrograms to disk:
-    audio_filename = 'ljspeech-audio-%05d.npy' % index
-    mel_filename = 'ljspeech-mel-%05d.npy' % index
+    audio_filename = 'jsut-audio-%05d.npy' % index
+    mel_filename = 'jsut-mel-%05d.npy' % index
     np.save(os.path.join(out_dir, audio_filename),
             out.astype(out_dtype), allow_pickle=False)
     np.save(os.path.join(out_dir, mel_filename),

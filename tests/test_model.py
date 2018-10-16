@@ -3,7 +3,6 @@ from __future__ import with_statement, print_function, absolute_import
 
 import torch
 from torch import nn
-from torch.autograd import Variable
 from torch.nn import functional as F
 from nnmnkwii import preprocessing as P
 from pysptk.util import example_audio_file
@@ -18,6 +17,7 @@ from wavenet_vocoder.modules import ResidualConv1dGLU
 from wavenet_vocoder import WaveNet
 
 use_cuda = False
+device = torch.device("cuda" if use_cuda else "cpu")
 
 # For test
 build_compact_model = partial(WaveNet, layers=4, stacks=2, residual_channels=32,
@@ -56,15 +56,23 @@ def to_categorical(y, num_classes=None):
 def test_conv_block():
     conv = ResidualConv1dGLU(30, 30, kernel_size=3, dropout=1 - 0.95)
     print(conv)
-    x = Variable(torch.zeros(16, 30, 16000))
+    x = torch.zeros(16, 30, 16000)
     y, h = conv(x)
     print(y.size(), h.size())
 
 
-def test_wavenet():
-    model = build_compact_model()
+def test_wavenet_legacy():
+    model = build_compact_model(legacy=True)
     print(model)
-    x = Variable(torch.zeros(16, 256, 1000))
+    x = torch.zeros(16, 256, 1000)
+    y = model(x)
+    print(y.size())
+
+
+def test_wavenet():
+    model = build_compact_model(legacy=False)
+    print(model)
+    x = torch.zeros(16, 256, 1000)
     y = model(x)
     print(y.size())
 
@@ -120,11 +128,9 @@ def test_mixture_wavenet():
     # scalar input, not one-hot
     assert x.shape[1] == 1
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
-    c = Variable(torch.from_numpy(c).contiguous())
-    c = c.cuda() if use_cuda else c
+    c = torch.from_numpy(c).contiguous().to(device)
     print(c.size())
 
     model.eval()
@@ -150,11 +156,9 @@ def test_local_conditioning_correctness():
     assert model.local_conditioning_enabled()
     assert not model.has_speaker_embedding()
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
-    c = Variable(torch.from_numpy(c).contiguous())
-    c = c.cuda() if use_cuda else c
+    c = torch.from_numpy(c).contiguous().to(device)
     print(x.size(), c.size())
 
     model.eval()
@@ -172,7 +176,7 @@ def test_local_conditioning_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 
@@ -192,11 +196,9 @@ def test_local_conditioning_upsample_correctness():
     assert model.local_conditioning_enabled()
     assert not model.has_speaker_embedding()
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
-    c = Variable(torch.from_numpy(c).contiguous())
-    c = c.cuda() if use_cuda else c
+    c = torch.from_numpy(c).contiguous().to(device)
     print(x.size(), c.size())
 
     model.eval()
@@ -214,7 +216,7 @@ def test_local_conditioning_upsample_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 
@@ -229,11 +231,9 @@ def test_global_conditioning_with_embedding_correctness():
     assert not model.local_conditioning_enabled()
     assert model.has_speaker_embedding()
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
-    g = Variable(torch.from_numpy(g).contiguous())
-    g = g.cuda() if use_cuda else g
+    g = torch.from_numpy(g).long().contiguous().to(device)
     print(g.size())
 
     model.eval()
@@ -251,7 +251,7 @@ def test_global_conditioning_with_embedding_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 
@@ -267,11 +267,9 @@ def test_global_conditioning_correctness():
     # `use_speaker_embedding` False should diable embedding layer
     assert not model.has_speaker_embedding()
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
-    g = Variable(torch.from_numpy(g).contiguous())
-    g = g.cuda() if use_cuda else g
+    g = torch.from_numpy(g).contiguous().to(device)
     print(g.size())
 
     model.eval()
@@ -288,7 +286,7 @@ def test_global_conditioning_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 
@@ -301,16 +299,13 @@ def test_global_and_local_conditioning_correctness():
     assert model.local_conditioning_enabled()
     assert model.has_speaker_embedding()
 
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
     # per-sample power
-    c = Variable(torch.from_numpy(c).contiguous())
-    c = c.cuda() if use_cuda else c
+    c = torch.from_numpy(c).contiguous().to(device)
 
     # mean power
-    g = Variable(torch.from_numpy(g).contiguous())
-    g = g.cuda() if use_cuda else g
+    g = torch.from_numpy(g).long().contiguous().to(device)
 
     print(c.size(), g.size())
 
@@ -329,7 +324,7 @@ def test_global_and_local_conditioning_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 
@@ -339,7 +334,7 @@ def test_incremental_forward_correctness():
     import librosa.display
     from matplotlib import pyplot as plt
 
-    model = build_compact_model()
+    model = build_compact_model().to(device)
 
     checkpoint_path = join(dirname(__file__), "..", "foobar/checkpoint_step000058000.pth")
     if exists(checkpoint_path):
@@ -347,13 +342,9 @@ def test_incremental_forward_correctness():
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])
 
-    if use_cuda:
-        model = model.cuda()
-
     sr = 4000
     x, x_org = _test_data(sr=sr, N=3000)
-    x = Variable(torch.from_numpy(x).contiguous())
-    x = x.cuda() if use_cuda else x
+    x = torch.from_numpy(x).contiguous().to(device)
 
     model.eval()
 
@@ -373,7 +364,7 @@ def test_incremental_forward_correctness():
     try:
         assert np.allclose(y_offline.cpu().data.numpy(),
                            y_online.cpu().data.numpy(), atol=1e-4)
-    except:
+    except Exception:
         from warnings import warn
         warn("oops! must be a bug!")
 

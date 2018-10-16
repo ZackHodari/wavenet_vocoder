@@ -6,7 +6,7 @@ import setuptools.command.build_py
 import os
 import subprocess
 
-version = '0.0.4'
+version = '0.1.1'
 
 # Adapted from https://github.com/pytorch/pytorch
 cwd = os.path.dirname(os.path.abspath(__file__))
@@ -56,8 +56,7 @@ setup(name='wavenet_vocoder',
       install_requires=[
           "numpy",
           "scipy",
-          "torch >= 0.3.0",
-          "deepvoice3_pytorch >= 0.0.2",
+          "torch >= 0.4.1",
       ],
       extras_require={
           "train": [
@@ -67,6 +66,7 @@ setup(name='wavenet_vocoder',
               "nnmnkwii >= 0.0.11",
               "keras",
               "scikit-learn",
+              "lws",
           ],
           "test": [
               "nose",

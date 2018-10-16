@@ -2,26 +2,32 @@
 
 [![PyPI](https://img.shields.io/pypi/v/wavenet_vocoder.svg)](https://pypi.python.org/pypi/wavenet_vocoder)
 [![Build Status](https://travis-ci.org/r9y9/wavenet_vocoder.svg?branch=master)](https://travis-ci.org/r9y9/wavenet_vocoder)
+[![Build status](https://ci.appveyor.com/api/projects/status/lvt9jtimtg0koxwj?svg=true)](https://ci.appveyor.com/project/r9y9/wavenet-vocoder)
 
 The goal of the repository is to provide an implementation of the WaveNet vocoder, which can generate high quality raw speech samples conditioned on linguistic or acoustic features.
 
 Audio samples are available at https://r9y9.github.io/wavenet_vocoder/.
 
-See https://github.com/r9y9/wavenet_vocoder/issues/1 for planned TODOs and current progress.
+## Online TTS demo
 
+A notebook supposed to be executed on https://colab.research.google.com is available:
+
+- [Tacotron2: WaveNet-based text-to-speech demo](https://colab.research.google.com/github/r9y9/Colaboratory/blob/master/Tacotron2_and_WaveNet_text_to_speech_demo.ipynb)
 
 ## Highlights
 
 - Focus on local and global conditioning of WaveNet, which is essential for vocoder.
-- Mixture of logistic distributions loss / sampling (experimental)
+- Mixture of logistic distributions loss / sampling
+- Various audio samples and pre-trained models
+- Fast inference by caching intermediate states in convolutions. Similar to [arXiv:1611.09482](https://arxiv.org/abs/1611.09482)
 
 ## Pre-trained models
 
-**Note**: This is not a text-to-speech (TTS) model. With a pre-trained model provided here, you can synthesize waveform given a *mel spectrogram*, not raw text. Pre-trained models for TTS are planed to be released once I finish up [deepvoice3_pytorch/#21](https://github.com/r9y9/deepvoice3_pytorch/pull/21).
+**Note**: This is not itself a text-to-speech (TTS) model. With a pre-trained model provided here, you can synthesize waveform given a *mel spectrogram*, not raw text. You will need mel-spectrogram prediction model (such as Tacotron2) to use the pre-trained models for TTS.
 
 | Model URL                                                                                                                        | Data       | Hyper params URL                                                                                     | Git commit                                                                                         | Steps         |
 |----------------------------------------------------------------------------------------------------------------------------------|------------|------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|---------------|
-| [link](https://www.dropbox.com/s/8qgcbd1mm2xsqgq/20180127_mixture_lj_checkpoint_step000410000_ema.pth?dl=0)                      | LJSpeech   | [link](https://www.dropbox.com/s/stxasitb56y1zw8/20180127_ljspeech_mixture.json?dl=0)                | [489e6fa](https://github.com/r9y9/wavenet_vocoder/commit/489e6fa92eda9ecf5b953b2783d5975d2fdee27a) | 1000k~  steps |
+| [link](https://www.dropbox.com/s/zdbfprugbagfp2w/20180510_mixture_lj_checkpoint_step000320000_ema.pth?dl=0)                      | LJSpeech   | [link](https://www.dropbox.com/s/0vsd7973w20eskz/20180510_mixture_lj_checkpoint_step000320000_ema.json?dl=0)                | [2092a64](https://github.com/r9y9/wavenet_vocoder/commit/2092a647e60ce002389818de1fa66d0a2c5763d8) | 1000k~  steps |
 | [link](https://www.dropbox.com/s/d0qk4ow9uuh2lww/20180212_mixture_multispeaker_cmu_arctic_checkpoint_step000740000_ema.pth?dl=0) | CMU ARCTIC | [link](https://www.dropbox.com/s/i35yigj5hvmeol8/20180212_multispeaker_cmu_arctic_mixture.json?dl=0) | [b1a1076](https://github.com/r9y9/wavenet_vocoder/tree/b1a1076e8b5d9b3e275c28f2f7f4d7cd0e75dae4)   | 740k steps    |
 
 To use pre-trained models, first checkout the specific git commit noted above. i.e.,
@@ -35,13 +41,15 @@ And then follows "Synthesize from a checkpoint" section in the README. Note that
 You could try for example:
 
 ```
-# Assuming you have downloaded LJSpeech-1.0 at ~/data/LJSpeech-1.0
-# pretrained model (20180127_mixture_lj_checkpoint_step000410000_ema.pth)
-git checkout 489e6fa
-python preprocess.py ljspeech ~/data/LJSpeech-1.0 ./data/ljspeech
-python synthesis.py --hparams="input_type=raw,quantize_channels=65536,out_channels=30" \
+# Assuming you have downloaded LJSpeech-1.1 at ~/data/LJSpeech-1.1
+# pretrained model (20180510_mixture_lj_checkpoint_step000320000_ema.pth)
+# hparams (20180510_mixture_lj_checkpoint_step000320000_ema.json)
+git checkout 2092a64
+python preprocess.py ljspeech ~/data/LJSpeech-1.1 ./data/ljspeech \
+  --preset=20180510_mixture_lj_checkpoint_step000320000_ema.json
+python synthesis.py --preset=20180510_mixture_lj_checkpoint_step000320000_ema.json \
   --conditional=./data/ljspeech/ljspeech-mel-00001.npy \
-  20180127_mixture_lj_checkpoint_step000410000_ema.pth \
+  20180510_mixture_lj_checkpoint_step000320000_ema.pth \
   generated
 ```
 
@@ -51,6 +59,7 @@ You can find a generated wav file in `generated` directory. Wonder how it works?
 
 - Python 3
 - CUDA >= 8.0
+- PyTorch >= v0.4.0
 - TensorFlow >= v1.3
 
 ## Installation
@@ -58,8 +67,7 @@ You can find a generated wav file in `generated` directory. Wonder how it works?
 The repository contains a core library (PyTorch implementation of the WaveNet) and utility scripts. All the library and its dependencies can be installed by:
 
 ```
-git clone https://github.com/r9y9/wavenet_vocoder
-cd wavenet_vocoder
+git clone https://github.com/r9y9/wavenet_vocoder && cd wavenet_vocoder
 pip install -e ".[train]"
 ```
 
@@ -121,6 +129,8 @@ python preprocess.py cmu_arctic ~/data/cmu_arctic ./data/cmu_arctic --preset=pre
 When this is done, you will see time-aligned extracted features (pairs of audio and mel-spectrogram) in `./data/cmu_arctic`.
 
 ### 2. Training
+
+>Note: for multi gpu training, you have better ensure that batch_size % num_gpu == 0
 
 Usage:
 
@@ -209,7 +219,7 @@ Usage:
 
 ```
 python evaluate.py ${checkpoint_path} ${output_dir} --data-root="data location"\
-    --hparams="parameters you want to override"
+    --preset=<json> --hparams="parameters you want to override"
 ```
 
 This script is used for generating sounds for https://r9y9.github.io/wavenet_vocoder/.
@@ -234,3 +244,4 @@ python evaluate.py --data-root=./data/cmu_arctic/ \
 - [Tamamori, Akira, et al. "Speaker-dependent WaveNet vocoder." Proceedings of Interspeech. 2017.](http://www.isca-speech.org/archive/Interspeech_2017/pdfs/0314.PDF)
 - [Jonathan Shen, Ruoming Pang, Ron J. Weiss, et al, "Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions", arXiv:1712.05884, Dec 2017.](https://arxiv.org/abs/1712.05884)
 - [Wei Ping, Kainan Peng, Andrew Gibiansky, et al, "Deep Voice 3: 2000-Speaker Neural Text-to-Speech", arXiv:1710.07654, Oct. 2017.](https://arxiv.org/abs/1710.07654)
+- [Tom Le Paine, Pooya Khorrami, Shiyu Chang, et al, "Fast Wavenet Generation Algorithm", arXiv:1611.09482, Nov. 2016](https://arxiv.org/abs/1611.09482)

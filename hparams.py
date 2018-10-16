@@ -20,7 +20,6 @@ hparams = tf.contrib.training.HParams(
     # input and softmax output are assumed.
     # **NOTE**: if you change the one of the two parameters below, you need to
     # re-run preprocessing before training.
-    # **NOTE**: scaler input (raw or mulaw) is experimental. Use it your own risk.
     input_type="raw",
     quantize_channels=65536,  # 65536 or 256
 
@@ -63,6 +62,10 @@ hparams = tf.contrib.training.HParams(
     kernel_size=3,
     # If True, apply weight normalization as same as DeepVoice3
     weight_normalization=True,
+    # Use legacy code or not. Default is True since we already provided a model
+    # based on the legacy code that can generate high-quality audio.
+    # Ref: https://github.com/r9y9/wavenet_vocoder/pull/73
+    legacy=True,
 
     # Local conditioning (set negative value to disable))
     cin_channels=80,
@@ -99,6 +102,7 @@ hparams = tf.contrib.training.HParams(
     adam_beta1=0.9,
     adam_beta2=0.999,
     adam_eps=1e-8,
+    amsgrad=False,
     initial_learning_rate=1e-3,
     # see lrschedule.py for available lr_schedule
     lr_schedule="noam_learning_rate_decay",
@@ -107,8 +111,7 @@ hparams = tf.contrib.training.HParams(
     weight_decay=0.0,
     clip_thresh=-1,
     # max time steps can either be specified as sec or steps
-    # This is needed for those who don't have huge GPU memory...
-    # if both are None, then full audio samples are used
+    # if both are None, then full audio samples are used in a batch
     max_time_sec=None,
     max_time_steps=8000,
     # Hold moving averaged parameters and use them for evaluation

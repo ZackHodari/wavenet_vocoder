@@ -6,10 +6,9 @@ import numpy as np
 
 import torch
 from torch import nn
-from torch.autograd import Variable
 from torch.nn import functional as F
 
-from deepvoice3_pytorch.modules import Embedding
+from .modules import Embedding
 
 from .modules import Conv1d1x1, ResidualConv1dGLU, ConvTranspose2d
 from .mixture import sample_from_discretized_mix_logistic
@@ -21,11 +20,11 @@ def _expand_global_features(B, T, g, bct=True):
     Args:
         B (int): Batch size.
         T (int): Time length.
-        g (Variable): Global features, (B x C) or (B x C x 1).
+        g (Tensor): Global features, (B x C) or (B x C x 1).
         bct (bool) : returns (B x C x T) if True, otherwise (B x T x C)
 
     Returns:
-        Variable: B x C x T or B x T x C or None
+        Tensor: B x C x T or B x T x C or None
     """
     if g is None:
         return None
@@ -94,6 +93,8 @@ class WaveNet(nn.Module):
         use_speaker_embedding (Bool): Use speaker embedding or Not. Set to False
           if you want to disable embedding layer and use external features
           directly.
+        legacy (bool) Use legacy code or not. Default is True for backward
+          compatibility.
     """
 
     def __init__(self, out_channels=256, layers=20, stacks=2,
@@ -108,11 +109,13 @@ class WaveNet(nn.Module):
                  freq_axis_kernel_size=3,
                  scalar_input=False,
                  use_speaker_embedding=True,
+                 legacy=True,
                  ):
         super(WaveNet, self).__init__()
         self.scalar_input = scalar_input
         self.out_channels = out_channels
         self.cin_channels = cin_channels
+        self.legacy = legacy
         assert layers % stacks == 0
         layers_per_stack = layers // stacks
         if scalar_input:
@@ -177,10 +180,10 @@ class WaveNet(nn.Module):
         """Forward step
 
         Args:
-            x (Variable): One-hot encoded audio signal, shape (B x C x T)
-            c (Variable): Local conditioning features,
+            x (Tensor): One-hot encoded audio signal, shape (B x C x T)
+            c (Tensor): Local conditioning features,
               shape (B x cin_channels x T)
-            g (Variable): Global conditioning features,
+            g (Tensor): Global conditioning features,
               shape (B x gin_channels x 1) or speaker Ids of shape (B x 1).
               Note that ``self.use_speaker_embedding`` must be False when you
               want to disable embedding layer and use external features
@@ -190,7 +193,7 @@ class WaveNet(nn.Module):
             softmax (bool): Whether applies softmax or not.
 
         Returns:
-            Variable: output, shape B x out_channels x T
+            Tensor: output, shape B x out_channels x T
         """
         B, _, T = x.size()
 
@@ -222,8 +225,8 @@ class WaveNet(nn.Module):
                 skips = h
             else:
                 skips += h
-                skips *= math.sqrt(0.5)
-            # skips = h if skips is None else (skips + h) * math.sqrt(0.5)
+                if self.legacy:
+                    skips *= math.sqrt(0.5)
 
         x = skips
         for f in self.last_conv_layers:
@@ -244,11 +247,11 @@ class WaveNet(nn.Module):
         Input of each time step will be of shape (B x 1 x C).
 
         Args:
-            initial_input (Variable): Initial decoder input, (B x C x 1)
-            c (Variable): Local conditioning features, shape (B x C' x T)
-            g (Variable): Global conditioning features, shape (B x C'' or B x C''x 1)
+            initial_input (Tensor): Initial decoder input, (B x C x 1)
+            c (Tensor): Local conditioning features, shape (B x C' x T)
+            g (Tensor): Global conditioning features, shape (B x C'' or B x C''x 1)
             T (int): Number of time steps to generate.
-            test_inputs (Variable): Teacher forcing inputs (for debugging)
+            test_inputs (Tensor): Teacher forcing inputs (for debugging)
             tqdm (lamda) : tqdm
             softmax (bool) : Whether applies softmax or not
             quantize (bool): Whether quantize softmax output before feeding the
@@ -256,7 +259,7 @@ class WaveNet(nn.Module):
             log_scale_min (float):  Log scale minimum value.
 
         Returns:
-            Variable: Generated one-hot encoded samples. B x C x T　
+            Tensor: Generated one-hot encoded samples. B x C x T　
               or scaler vector B x 1 x T
         """
         self.clear_buffer()
@@ -291,7 +294,6 @@ class WaveNet(nn.Module):
 
         # Local conditioning
         if c is not None and self.upsample_conv is not None:
-            assert c is not None
             # B x 1 x C x T
             c = c.unsqueeze(1)
             for f in self.upsample_conv:
@@ -305,9 +307,9 @@ class WaveNet(nn.Module):
         outputs = []
         if initial_input is None:
             if self.scalar_input:
-                initial_input = Variable(torch.zeros(B, 1, 1))
+                initial_input = torch.zeros(B, 1, 1)
             else:
-                initial_input = Variable(torch.zeros(B, 1, self.out_channels))
+                initial_input = torch.zeros(B, 1, self.out_channels)
                 initial_input[:, :, 127] = 1  # TODO: is this ok?
             # https://github.com/pytorch/pytorch/issues/584#issuecomment-275169567
             if next(self.parameters()).is_cuda:
@@ -317,6 +319,7 @@ class WaveNet(nn.Module):
                 initial_input = initial_input.transpose(1, 2).contiguous()
 
         current_input = initial_input
+
         for t in tqdm(range(T)):
             if test_inputs is not None and t < test_inputs.size(1):
                 current_input = test_inputs[:, t, :].unsqueeze(1)
@@ -333,7 +336,10 @@ class WaveNet(nn.Module):
             skips = None
             for f in self.conv_layers:
                 x, h = f.incremental_forward(x, ct, gt)
-                skips = h if skips is None else (skips + h) * math.sqrt(0.5)
+                if self.legacy:
+                    skips = h if skips is None else (skips + h) * math.sqrt(0.5)
+                else:
+                    skips = h if skips is None else (skips + h)
             x = skips
             for f in self.last_conv_layers:
                 try:
@@ -352,8 +358,7 @@ class WaveNet(nn.Module):
                         np.arange(self.out_channels), p=x.view(-1).data.cpu().numpy())
                     x.zero_()
                     x[:, sample] = 1.0
-            outputs += [x]
-
+            outputs += [x.data]
         # T x B x C
         outputs = torch.stack(outputs)
         # B x C x T

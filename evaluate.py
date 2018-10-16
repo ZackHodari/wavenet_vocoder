@@ -7,6 +7,7 @@ usage: evaluate.py [options] <checkpoint> <dst_dir>
 options:
     --data-root=<dir>           Directory contains preprocessed features.
     --hparams=<parmas>          Hyper parameters [default: ].
+    --preset=<json>             Path of preset parameters (json).
     --length=<T>                Steps to generate [default: 32000].
     --speaker-id=<N>            Use specific speaker of data in case for multi-speaker datasets.
     --initial-value=<n>         Initial value for the WaveNet decoder.
@@ -21,7 +22,6 @@ import sys
 import os
 from os.path import dirname, join, basename, splitext
 import torch
-from torch.autograd import Variable
 import numpy as np
 from nnmnkwii import preprocessing as P
 from keras.utils import np_utils
@@ -36,7 +36,7 @@ from hparams import hparams
 
 
 use_cuda = torch.cuda.is_available()
-
+device = torch.device("cuda" if use_cuda else "cpu")
 
 if __name__ == "__main__":
     args = docopt(__doc__)
@@ -57,7 +57,12 @@ if __name__ == "__main__":
     file_name_suffix = args["--file-name-suffix"]
     output_html = args["--output-html"]
     num_utterances = int(args["--num-utterances"])
+    preset = args["--preset"]
 
+    # Load preset if specified
+    if preset is not None:
+        with open(preset) as f:
+            hparams.parse_json(f.read())
     # Override hyper parameters
     hparams.parse(args["--hparams"])
     assert hparams.name == "wavenet_vocoder"
@@ -75,11 +80,14 @@ if __name__ == "__main__":
     test_dataset = test_data_loader.dataset
 
     # Model
-    model = build_model()
+    model = build_model().to(device)
 
     # Load checkpoint
     print("Load checkpoint from {}".format(checkpoint_path))
-    checkpoint = torch.load(checkpoint_path)
+    if use_cuda:
+        checkpoint = torch.load(checkpoint_path)
+    else:
+        checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
     model.load_state_dict(checkpoint["state_dict"])
     checkpoint_name = splitext(basename(checkpoint_path))[0]
 
@@ -89,6 +97,8 @@ if __name__ == "__main__":
     generated_utterances = {}
     for idx, (x, c, g) in enumerate(test_dataset):
         target_audio_path = test_dataset.X.collected_files[idx][0]
+        if g is None and num_utterances > 0 and idx > num_utterances:
+            break
         if num_utterances > 0 and g is not None:
             try:
                 generated_utterances[g] += 1

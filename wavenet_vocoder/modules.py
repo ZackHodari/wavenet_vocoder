@@ -5,9 +5,23 @@ import math
 import numpy as np
 
 import torch
+from wavenet_vocoder import conv
 from torch import nn
-from torch.autograd import Variable
 from torch.nn import functional as F
+
+
+def Conv1d(in_channels, out_channels, kernel_size, dropout=0, std_mul=4.0, **kwargs):
+    m = conv.Conv1d(in_channels, out_channels, kernel_size, **kwargs)
+    std = math.sqrt((std_mul * (1.0 - dropout)) / (m.kernel_size[0] * in_channels))
+    m.weight.data.normal_(mean=0, std=std)
+    m.bias.data.zero_()
+    return nn.utils.weight_norm(m)
+
+
+def Embedding(num_embeddings, embedding_dim, padding_idx, std=0.01):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    m.weight.data.normal_(0, std)
+    return m
 
 
 def ConvTranspose2d(in_channels, out_channels, kernel_size,
@@ -26,14 +40,12 @@ def Conv1d1x1(in_channels, out_channels, bias=True, weight_normalization=True):
     """1-by-1 convolution layer
     """
     if weight_normalization:
-        from deepvoice3_pytorch.modules import Conv1d
         assert bias
         return Conv1d(in_channels, out_channels, kernel_size=1, padding=0,
                       dilation=1, bias=bias, std_mul=1.0)
     else:
-        from deepvoice3_pytorch.conv import Conv1d
-        return Conv1d(in_channels, out_channels, kernel_size=1, padding=0,
-                      dilation=1, bias=bias)
+        return conv.Conv1d(in_channels, out_channels, kernel_size=1, padding=0,
+                           dilation=1, bias=bias)
 
 
 def _conv1x1_forward(conv, x, is_incremental):
@@ -85,16 +97,14 @@ class ResidualConv1dGLU(nn.Module):
         self.causal = causal
 
         if weight_normalization:
-            from deepvoice3_pytorch.modules import Conv1d
             assert bias
             self.conv = Conv1d(residual_channels, gate_channels, kernel_size,
-                               dropout=dropout, padding=padding, dilation=dilation,
+                               padding=padding, dilation=dilation,
                                bias=bias, std_mul=1.0, *args, **kwargs)
         else:
-            from deepvoice3_pytorch.conv import Conv1d
-            self.conv = Conv1d(residual_channels, gate_channels, kernel_size,
-                               padding=padding, dilation=dilation,
-                               bias=bias, *args, **kwargs)
+            self.conv = conv.Conv1d(residual_channels, gate_channels, kernel_size,
+                                    padding=padding, dilation=dilation,
+                                    bias=bias, *args, **kwargs)
 
         # local conditioning
         if cin_channels > 0:
@@ -128,13 +138,13 @@ class ResidualConv1dGLU(nn.Module):
         """Forward
 
         Args:
-            x (Variable): B x C x T
-            c (Variable): B x C x T, Local conditioning features
-            g (Variable): B x C x T, Expanded global conditioning features
+            x (Tensor): B x C x T
+            c (Tensor): B x C x T, Local conditioning features
+            g (Tensor): B x C x T, Expanded global conditioning features
             is_incremental (Bool) : Whether incremental mode or not
 
         Returns:
-            Variable: output
+            Tensor: output
         """
         residual = x
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -163,7 +173,7 @@ class ResidualConv1dGLU(nn.Module):
             ga, gb = g.split(g.size(splitdim) // 2, dim=splitdim)
             a, b = a + ga, b + gb
 
-        x = F.tanh(a) * F.sigmoid(b)
+        x = torch.tanh(a) * torch.sigmoid(b)
 
         # For skip connection
         s = _conv1x1_forward(self.conv1x1_skip, x, is_incremental)
@@ -175,7 +185,7 @@ class ResidualConv1dGLU(nn.Module):
         return x, s
 
     def clear_buffer(self):
-        for conv in [self.conv, self.conv1x1_out, self.conv1x1_skip,
-                     self.conv1x1c, self.conv1x1g]:
-            if conv is not None:
-                self.conv.clear_buffer()
+        for c in [self.conv, self.conv1x1_out, self.conv1x1_skip,
+                  self.conv1x1c, self.conv1x1g]:
+            if c is not None:
+                c.clear_buffer()

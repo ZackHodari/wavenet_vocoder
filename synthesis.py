@@ -10,6 +10,8 @@ options:
     --length=<T>                      Steps to generate [default: 32000].
     --initial-value=<n>               Initial value for the WaveNet decoder.
     --conditional=<p>                 Conditional features path.
+    --symmetric-mels                  Symmetric mel.
+    --max-abs-value=<N>               Max abs value [default: -1].
     --file-name-suffix=<s>            File name suffix [default: ].
     --speaker-id=<id>                 Speaker ID (for multi-speaker model).
     --output-html                     Output html for blog post.
@@ -21,7 +23,6 @@ import sys
 import os
 from os.path import dirname, join, basename, splitext
 import torch
-from torch.autograd import Variable
 import numpy as np
 from nnmnkwii import preprocessing as P
 from keras.utils import np_utils
@@ -34,7 +35,9 @@ import audio
 from hparams import hparams
 
 
+torch.set_num_threads(4)
 use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
 
 
 def _to_numpy(x):
@@ -72,8 +75,6 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
     c = _to_numpy(c)
     g = _to_numpy(g)
 
-    if use_cuda:
-        model = model.cuda()
     model.eval()
     if fast:
         model.make_generation_fast_()
@@ -96,7 +97,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
             c = np.repeat(c, upsample_factor, axis=0)
 
         # B x C x T
-        c = Variable(torch.FloatTensor(c.T).unsqueeze(0))
+        c = torch.FloatTensor(c.T).unsqueeze(0)
 
     if initial_value is None:
         if is_mulaw_quantize(hparams.input_type):
@@ -108,21 +109,25 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
         assert initial_value >= 0 and initial_value < hparams.quantize_channels
         initial_input = np_utils.to_categorical(
             initial_value, num_classes=hparams.quantize_channels).astype(np.float32)
-        initial_input = Variable(torch.from_numpy(initial_input)).view(
+        initial_input = torch.from_numpy(initial_input).view(
             len(initial_value), 1, hparams.quantize_channels)
     else:
-        initial_input = Variable(torch.zeros(len(initial_value), 1, 1)).fill_(initial_value)
+        initial_input = torch.zeros(len(initial_value), 1, 1).fill_(initial_value)
 
-    g = None if g is None else Variable(torch.LongTensor([g]))
-    if use_cuda:
-        initial_input = initial_input.cuda()
-        g = None if g is None else g.cuda()
-        c = None if c is None else c.cuda()
+    g = None if g is None else torch.LongTensor([g])
 
     print_gpu_memory()
-    y_hat = model.incremental_forward(
-        initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
-        log_scale_min=hparams.log_scale_min)
+
+    # Transform data to GPU
+    initial_input = initial_input.to(device)
+    g = None if g is None else g.to(device)
+    c = None if c is None else c.to(device)
+
+    with torch.no_grad():
+        y_hat = model.incremental_forward(
+            initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
+            log_scale_min=hparams.log_scale_min)
+
     print_gpu_memory()
 
     if is_mulaw_quantize(hparams.input_type):
@@ -150,6 +155,10 @@ if __name__ == "__main__":
     else:
         initial_value = librosa.load(seed_file, sr=hparams.sample_rate)
     conditional_path = args["--conditional"]
+    # From https://github.com/Rayhane-mamah/Tacotron-2
+    symmetric_mels = args["--symmetric-mels"]
+    max_abs_value = float(args["--max-abs-value"])
+
     file_name_suffix = args["--file-name-suffix"]
     output_html = args["--output-html"]
     speaker_id = args["--speaker-id"]
@@ -170,13 +179,21 @@ if __name__ == "__main__":
     # Load conditional features
     if conditional_path is not None:
         c = np.load(conditional_path)
+        if c.shape[1] != hparams.num_mels:
+            c = np.swapaxes(c, 0, 1)
+        if max_abs_value > 0:
+            min_, max_ = 0, max_abs_value
+            if symmetric_mels:
+                min_ = -max_
+            print("Normalize features to desired range [0, 1] from [{}, {}]".format(min_, max_))
+            c = np.interp(c, (min_, max_), (0, 1))
     else:
         c = None
 
     from train import build_model
 
     # Model
-    model = build_model()
+    model = build_model().to(device)
 
     # Load checkpoint
     print("Load checkpoint from {}".format(checkpoint_path))
