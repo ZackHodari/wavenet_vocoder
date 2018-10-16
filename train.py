@@ -696,7 +696,7 @@ def train_loop(device, model, data_loaders, optimizer, writer, checkpoint_dir=No
                 if do_eval:
                     print("[{}] Eval at train step {}".format(phase, global_step))
                     print("[{}] Current time {}".format(phase, time_string()))
-                    print("[{}] Elapsed time {}".format(phase, elapsed_time()))
+                    print("[{}] Elapsed time {}".format(phase, elapsed_time(start_time)))
 
                 # Do step
                 running_loss += __train_step(device,
