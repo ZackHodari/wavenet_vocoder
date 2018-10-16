@@ -100,18 +100,18 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
 
     if initial_value is None:
         if is_mulaw_quantize(hparams.input_type):
-            initial_value = P.mulaw_quantize(0, hparams.quantize_channels)
+            initial_value = P.mulaw_quantize(np.array([0]), hparams.quantize_channels)
         else:
-            initial_value = 0.0
+            initial_value = np.array([0.0])
 
     if is_mulaw_quantize(hparams.input_type):
         assert initial_value >= 0 and initial_value < hparams.quantize_channels
         initial_input = np_utils.to_categorical(
             initial_value, num_classes=hparams.quantize_channels).astype(np.float32)
         initial_input = Variable(torch.from_numpy(initial_input)).view(
-            1, 1, hparams.quantize_channels)
+            len(initial_value), 1, hparams.quantize_channels)
     else:
-        initial_input = Variable(torch.zeros(1, 1, 1)).fill_(initial_value)
+        initial_input = Variable(torch.zeros(len(initial_value), 1, 1)).fill_(initial_value)
 
     g = None if g is None else Variable(torch.LongTensor([g]))
     if use_cuda:
@@ -144,7 +144,11 @@ if __name__ == "__main__":
 
     length = int(args["--length"])
     initial_value = args["--initial-value"]
-    initial_value = None if initial_value is None else float(initial_value)
+    seed_file = args["--seed-file"]
+    if seed_file is None:
+        initial_value = None if initial_value is None else float(initial_value)
+    else:
+        initial_value = librosa.load(seed_file, sr=hparams.sample_rate)
     conditional_path = args["--conditional"]
     file_name_suffix = args["--file-name-suffix"]
     output_html = args["--output-html"]
